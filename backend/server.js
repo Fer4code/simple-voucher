@@ -27,12 +27,34 @@ app.use(express.static(frontendPath));
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const VENTAS_GROUP_ID = process.env.VENTAS_GROUP_ID;
 const ADMIN_GROUP_ID = process.env.ADMIN_GROUP_ID;
+const WEBHOOK_URL = process.env.WEBHOOK_URL; // e.g. https://yourdomain.com
 
 let bot = null;
 
 if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
-    bot = new TelegramBot(BOT_TOKEN, { polling: true });
+    // Webhook mode (production) vs Polling mode (development)
+    if (WEBHOOK_URL) {
+        bot = new TelegramBot(BOT_TOKEN, { webHook: true });
+        const webhookPath = `/api/telegram-webhook/${BOT_TOKEN}`;
+        bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`);
 
+        // Express route to receive Telegram updates
+        app.post(webhookPath, (req, res) => {
+            bot.processUpdate(req.body);
+            res.sendStatus(200);
+        });
+
+        console.log('🤖 Telegram bot started (webhook mode)');
+        console.log(`   Webhook URL: ${WEBHOOK_URL}${webhookPath}`);
+    } else {
+        bot = new TelegramBot(BOT_TOKEN, { polling: true });
+        bot.on('polling_error', (err) => {
+            console.error('Telegram polling error:', err.message);
+        });
+        console.log('🤖 Telegram bot started (polling mode)');
+    }
+
+    // ─── Bot Commands ────────────────────────────────────────────
     bot.onText(/\/ticket/, (msg) => {
         const chatId = msg.chat.id.toString();
 
@@ -72,12 +94,6 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
             );
         }
     });
-
-    bot.on('polling_error', (err) => {
-        console.error('Telegram polling error:', err.message);
-    });
-
-    console.log('🤖 Telegram bot started (polling mode)');
 } else {
     console.warn('⚠️  TELEGRAM_BOT_TOKEN not set — bot disabled. Set it in .env');
     console.warn('   (Looking for .env at:', path.join(__dirname, '.env') + ')');
