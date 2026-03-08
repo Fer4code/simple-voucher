@@ -10,11 +10,14 @@ RUN npm run build
 # ─── Stage 2: Production Server ──────────────────────────
 FROM node:20-alpine AS production
 
+# Build tools needed for better-sqlite3 native compilation
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
-# Install backend dependencies
+# Install backend dependencies (rebuilds native modules for Alpine)
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev && apk del python3 make g++
 
 # Copy backend source
 COPY backend/ ./
