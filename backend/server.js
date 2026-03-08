@@ -9,7 +9,8 @@ const {
     markRequested,
     markUsed,
     getAllVouchers,
-    getStats
+    getStats,
+    insertVoucher
 } = require('./db');
 
 const app = express();
@@ -100,6 +101,36 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
 }
 
 // ─── REST API ────────────────────────────────────────────────────
+
+// Seed vouchers via API (so you can add while the app is running)
+app.post('/api/vouchers/seed', (req, res) => {
+    try {
+        const { codes } = req.body;
+        if (!codes) {
+            return res.status(400).json({ error: 'Missing "codes" — provide an array or comma-separated string' });
+        }
+
+        const codeList = Array.isArray(codes) ? codes : codes.split(',');
+        let inserted = 0;
+        let skipped = 0;
+
+        for (const code of codeList) {
+            const trimmed = code.trim();
+            if (!trimmed) continue;
+            if (insertVoucher(trimmed)) {
+                inserted++;
+            } else {
+                skipped++;
+            }
+        }
+
+        res.json({ message: `Inserted: ${inserted}, Skipped: ${skipped}`, inserted, skipped });
+    } catch (err) {
+        console.error('Error seeding vouchers:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 
 // Request a voucher (simulates /ticket command via API)
 app.post('/api/voucher/request', (req, res) => {
