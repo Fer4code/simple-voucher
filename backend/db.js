@@ -117,13 +117,13 @@ function insertVoucher(code) {
 function getDailyReport(since, until) {
   const voucherPrice = parseFloat(process.env.VOUCHER_PRICE) || 1;
 
-  // Per-seller breakdown: vouchers requested in the period
+  // Per-seller breakdown: vouchers requested (but not yet used) in the period
   const requestedBySeller = db.prepare(`
     SELECT requested_by AS seller,
            COUNT(*) AS requested_count
     FROM vouchers
     WHERE requested_at >= ? AND requested_at < ?
-      AND requested_by IS NOT NULL
+      AND requested_by IS NOT NULL AND used_at IS NULL
     GROUP BY requested_by
     ORDER BY requested_count DESC
   `).all(since, until);
@@ -154,10 +154,10 @@ function getDailyReport(since, until) {
 
   const sellers = Object.values(sellerMap).sort((a, b) => b.used - a.used);
 
-  // Totals for the period
+  // Totals for the period (requested but not yet used)
   const totalRequested = db.prepare(`
     SELECT COUNT(*) AS count FROM vouchers
-    WHERE requested_at >= ? AND requested_at < ?
+    WHERE requested_at >= ? AND requested_at < ? AND used_at IS NULL
   `).get(since, until).count;
 
   const totalUsed = db.prepare(`
@@ -174,12 +174,14 @@ function getDailyReport(since, until) {
     SELECT COUNT(*) AS count FROM vouchers
   `).get().count;
 
+  const totalPaymentFromSellers = sellers.reduce((sum, s) => sum + s.payment, 0);
+
   return {
     sellers,
     totals: {
       requested: totalRequested,
       used: totalUsed,
-      totalPayment: totalUsed * voucherPrice,
+      totalPayment: totalPaymentFromSellers,
       availableInStock: totalAvailable,
       totalInInventory: totalInInventory,
       voucherPrice
