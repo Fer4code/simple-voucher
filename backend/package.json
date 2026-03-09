@@ -13,6 +13,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "moment-timezone": "^0.5.46",
+    "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.66.0"
   }
 }

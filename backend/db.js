@@ -108,6 +108,86 @@ function insertVoucher(code) {
   }
 }
 
+/**
+ * Get daily report data for a given period
+ * @param {string} since - Start timestamp (YYYY-MM-DD HH:mm:ss)
+ * @param {string} until - End timestamp (YYYY-MM-DD HH:mm:ss)
+ * @returns {{ sellers: Array, totals: Object, period: Object }}
+ */
+function getDailyReport(since, until) {
+  const voucherPrice = parseFloat(process.env.VOUCHER_PRICE) || 1;
+
+  // Per-seller breakdown: vouchers requested in the period
+  const requestedBySeller = db.prepare(`
+    SELECT requested_by AS seller,
+           COUNT(*) AS requested_count
+    FROM vouchers
+    WHERE requested_at >= ? AND requested_at < ?
+      AND requested_by IS NOT NULL
+    GROUP BY requested_by
+    ORDER BY requested_count DESC
+  `).all(since, until);
+
+  // Per-seller breakdown: vouchers used in the period
+  const usedBySeller = db.prepare(`
+    SELECT requested_by AS seller,
+           COUNT(*) AS used_count
+    FROM vouchers
+    WHERE used_at >= ? AND used_at < ?
+      AND requested_by IS NOT NULL
+    GROUP BY requested_by
+    ORDER BY used_count DESC
+  `).all(since, until);
+
+  // Build a combined map per seller
+  const sellerMap = {};
+  for (const row of requestedBySeller) {
+    sellerMap[row.seller] = { seller: row.seller, requested: row.requested_count, used: 0, payment: 0 };
+  }
+  for (const row of usedBySeller) {
+    if (!sellerMap[row.seller]) {
+      sellerMap[row.seller] = { seller: row.seller, requested: 0, used: 0, payment: 0 };
+    }
+    sellerMap[row.seller].used = row.used_count;
+    sellerMap[row.seller].payment = row.used_count * voucherPrice;
+  }
+
+  const sellers = Object.values(sellerMap).sort((a, b) => b.used - a.used);
+
+  // Totals for the period
+  const totalRequested = db.prepare(`
+    SELECT COUNT(*) AS count FROM vouchers
+    WHERE requested_at >= ? AND requested_at < ?
+  `).get(since, until).count;
+
+  const totalUsed = db.prepare(`
+    SELECT COUNT(*) AS count FROM vouchers
+    WHERE used_at >= ? AND used_at < ?
+  `).get(since, until).count;
+
+  // Overall inventory snapshot
+  const totalAvailable = db.prepare(`
+    SELECT COUNT(*) AS count FROM vouchers WHERE requested_at IS NULL
+  `).get().count;
+
+  const totalInInventory = db.prepare(`
+    SELECT COUNT(*) AS count FROM vouchers
+  `).get().count;
+
+  return {
+    sellers,
+    totals: {
+      requested: totalRequested,
+      used: totalUsed,
+      totalPayment: totalUsed * voucherPrice,
+      availableInStock: totalAvailable,
+      totalInInventory: totalInInventory,
+      voucherPrice
+    },
+    period: { from: since, to: until }
+  };
+}
+
 module.exports = {
   db,
   getUnusedVoucher,
@@ -115,5 +195,6 @@ module.exports = {
   markUsed,
   getAllVouchers,
   getStats,
-  insertVoucher
+  insertVoucher,
+  getDailyReport
 };

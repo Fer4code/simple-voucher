@@ -43,6 +43,24 @@ for (const [name, groupId] of Object.entries(SALES_GROUPS)) {
     GROUP_TO_SALESPERSON[groupId.toString()] = name;
 }
 
+// ─── Telegram Message Log (last 25 incoming messages) ────────
+const telegramLog = [];
+const MAX_LOG = 25;
+
+function logTelegramMessage(update) {
+    const entry = {
+        timestamp: moment().tz('America/Caracas').format('YYYY-MM-DD HH:mm:ss'),
+        update_id: update.update_id,
+        chat_id: update.message?.chat?.id,
+        chat_title: update.message?.chat?.title || 'DM',
+        from: update.message?.from?.first_name || 'unknown',
+        text: update.message?.text || '(no text)',
+    };
+    telegramLog.push(entry);
+    if (telegramLog.length > MAX_LOG) telegramLog.shift();
+    console.log(`📩 TG msg: [${entry.chat_title}] ${entry.from}: ${entry.text}`);
+}
+
 let bot = null;
 
 if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
@@ -54,6 +72,7 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
 
         // Express route to receive Telegram updates
         app.post(webhookPath, (req, res) => {
+            logTelegramMessage(req.body);
             bot.processUpdate(req.body);
             res.sendStatus(200);
         });
@@ -65,11 +84,14 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
         bot.on('polling_error', (err) => {
             console.error('Telegram polling error:', err.message);
         });
+        bot.on('message', (msg) => {
+            logTelegramMessage({ update_id: Date.now(), message: msg });
+        });
         console.log('🤖 Telegram bot started (polling mode)');
     }
 
     // ─── Bot Commands ────────────────────────────────────────────
-    bot.onText(/\/ticket/, (msg) => {
+    bot.onText(/^[Tt]$/i, (msg) => {
         const chatId = msg.chat.id.toString();
 
         // Only respond in registered sales groups
@@ -118,6 +140,11 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
 }
 
 // ─── REST API ────────────────────────────────────────────────────
+
+// View last 25 Telegram messages received by this server
+app.get('/api/telegram-log', (req, res) => {
+    res.json({ count: telegramLog.length, messages: [...telegramLog].reverse() });
+});
 
 // Seed vouchers via API (so you can add while the app is running)
 app.post('/api/vouchers/seed', (req, res) => {
