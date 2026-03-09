@@ -11,6 +11,7 @@ function App() {
     const [stats, setStats] = useState({ total: 0, used: 0, requested: 0, unused: 0 })
     const [loading, setLoading] = useState(true)
     const [lastUpdated, setLastUpdated] = useState(null)
+    const [showReport, setShowReport] = useState(false)
 
     const fetchData = useCallback(async () => {
         try {
@@ -50,7 +51,12 @@ function App() {
     return (
         <div className="app">
             <header className="app-header">
-                <h1>📡 Voucher Manager</h1>
+                <div className="title-row">
+                    <h1>📡 Voucher Manager</h1>
+                    <button className="btn-report-toggle" onClick={() => setShowReport(!showReport)}>
+                        {showReport ? 'Ocultar Reporte' : '📅 Reporte Diario'}
+                    </button>
+                </div>
                 <p>
                     Sistema de gestión de vouchers MikroTik
                     <span className="live-indicator">
@@ -93,13 +99,15 @@ function App() {
                 </div>
 
                 {/* Daily Report */}
-                <div className="card" style={{ animationDelay: '0.15s' }}>
-                    <div className="card-title">
-                        <span className="icon">📅</span>
-                        Reporte Diario de Ventas
+                {showReport && (
+                    <div className="card" style={{ animationDelay: '0.15s' }}>
+                        <div className="card-title">
+                            <span className="icon">📅</span>
+                            Reporte Diario de Ventas
+                        </div>
+                        <DailyReport />
                     </div>
-                    <DailyReport />
-                </div>
+                )}
 
                 {/* Voucher Table */}
                 <div className="card" style={{ animationDelay: '0.2s' }}>
