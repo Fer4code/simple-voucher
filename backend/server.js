@@ -26,9 +26,22 @@ app.use(express.static(frontendPath));
 
 // ─── Telegram Bot ────────────────────────────────────────────────
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const VENTAS_GROUP_ID = process.env.VENTAS_GROUP_ID;
 const ADMIN_GROUP_ID = process.env.ADMIN_GROUP_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL; // e.g. https://yourdomain.com
+
+// Parse SALES_GROUPS: JSON map of { "SalespersonName": "groupId", ... }
+let SALES_GROUPS = {};
+try {
+    SALES_GROUPS = JSON.parse(process.env.SALES_GROUPS || '{}');
+} catch (err) {
+    console.error('⚠️  Failed to parse SALES_GROUPS from .env:', err.message);
+}
+
+// Build a reverse lookup: groupId → salesperson name
+const GROUP_TO_SALESPERSON = {};
+for (const [name, groupId] of Object.entries(SALES_GROUPS)) {
+    GROUP_TO_SALESPERSON[groupId.toString()] = name;
+}
 
 let bot = null;
 
@@ -59,8 +72,9 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
     bot.onText(/\/ticket/, (msg) => {
         const chatId = msg.chat.id.toString();
 
-        // Only respond in the Ventas group
-        if (chatId !== VENTAS_GROUP_ID) {
+        // Only respond in registered sales groups
+        const salesperson = GROUP_TO_SALESPERSON[chatId];
+        if (!salesperson) {
             return;
         }
 
@@ -71,15 +85,13 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
         }
 
         const now = moment().tz('America/Caracas').format('YYYY-MM-DD HH:mm:ss');
-        markRequested(voucher.id, now);
+        markRequested(voucher.id, now, salesperson);
 
-        const userName = msg.from.first_name || msg.from.username || 'Usuario';
-
-        // Reply in Ventas group
+        // Reply in the salesperson's private group
         bot.sendMessage(chatId,
             `🎫 *Voucher asignado*\n\n` +
             `Código: \`${voucher.code}\`\n` +
-            `Solicitado por: ${userName}\n` +
+            `Vendedor: ${salesperson}\n` +
             `Fecha: ${now}`,
             { parse_mode: 'Markdown' }
         );
@@ -89,11 +101,16 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
             bot.sendMessage(ADMIN_GROUP_ID,
                 `📋 *Voucher Solicitado*\n\n` +
                 `Código: \`${voucher.code}\`\n` +
-                `Solicitado por: ${userName}\n` +
+                `Vendedor: ${salesperson}\n` +
                 `Fecha: ${now}`,
                 { parse_mode: 'Markdown' }
             );
         }
+    });
+
+    // Utility: reply with chat ID so you can discover group IDs easily
+    bot.onText(/\/chatid/, (msg) => {
+        bot.sendMessage(msg.chat.id, `ℹ️ Chat ID: \`${msg.chat.id}\``, { parse_mode: 'Markdown' });
     });
 } else {
     console.warn('⚠️  TELEGRAM_BOT_TOKEN not set — bot disabled. Set it in .env');
@@ -142,16 +159,15 @@ app.post('/api/voucher/request', (req, res) => {
         }
 
         const now = moment().tz('America/Caracas').format('YYYY-MM-DD HH:mm:ss');
-        markRequested(voucher.id, now);
-
         const name = requester || 'Test User';
+        markRequested(voucher.id, now, name);
 
         // Notify Admin group if bot is connected
         if (bot && ADMIN_GROUP_ID) {
             bot.sendMessage(ADMIN_GROUP_ID,
                 `📋 *Voucher Solicitado*\n\n` +
                 `Código: \`${voucher.code}\`\n` +
-                `Solicitado por: ${name}\n` +
+                `Vendedor: ${name}\n` +
                 `Fecha: ${now}`,
                 { parse_mode: 'Markdown' }
             );
@@ -208,6 +224,19 @@ app.post('/api/voucher/use', (req, res) => {
 
         if (result.alreadyUsed) {
             return res.json({ message: 'Voucher was already used', voucher: result.voucher });
+        }
+
+        // Notify the salesperson who requested this voucher
+        if (bot && result.voucher.requested_by) {
+            const salespersonGroupId = SALES_GROUPS[result.voucher.requested_by];
+            if (salespersonGroupId) {
+                bot.sendMessage(salespersonGroupId,
+                    `🟢 *Voucher en uso*\n\n` +
+                    `Código: \`${code}\`\n` +
+                    `Fecha: ${now}`,
+                    { parse_mode: 'Markdown' }
+                );
+            }
         }
 
         // Notify Admin group about first usage

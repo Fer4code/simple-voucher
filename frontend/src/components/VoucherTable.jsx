@@ -89,6 +89,9 @@ export default function VoucherTable({ vouchers }) {
                         <th className={thClass('code')} onClick={() => handleSort('code')}>
                             Código
                         </th>
+                        <th className={thClass('requested_by')} onClick={() => handleSort('requested_by')}>
+                            Vendedor
+                        </th>
                         <th className={thClass('requested_at')} onClick={() => handleSort('requested_at')}>
                             Solicitado
                         </th>
@@ -109,6 +112,7 @@ export default function VoucherTable({ vouchers }) {
                                 <td>
                                     <span className="voucher-code">{v.code}</span>
                                 </td>
+                                <td>{v.requested_by || '—'}</td>
                                 <td>{formatCaracas(v.requested_at)}</td>
                                 <td>{formatCaracas(v.used_at)}</td>
                                 <td>
