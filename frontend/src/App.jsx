@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 import PieChart from './components/PieChart'
 import VoucherTable from './components/VoucherTable'
+import DailyReport from './components/DailyReport'
 
 const POLL_INTERVAL = 3000 // 3 seconds for near-real-time updates
 
@@ -89,6 +90,15 @@ function App() {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* Daily Report */}
+                <div className="card" style={{ animationDelay: '0.15s' }}>
+                    <div className="card-title">
+                        <span className="icon">📅</span>
+                        Reporte Diario de Ventas
+                    </div>
+                    <DailyReport />
                 </div>
 
                 {/* Voucher Table */}

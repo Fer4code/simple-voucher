@@ -10,7 +10,8 @@ const {
     markUsed,
     getAllVouchers,
     getStats,
-    insertVoucher
+    insertVoucher,
+    getDailyReport
 } = require('./db');
 
 const app = express();
@@ -55,10 +56,15 @@ function logTelegramMessage(update) {
         chat_title: update.message?.chat?.title || 'DM',
         from: update.message?.from?.first_name || 'unknown',
         text: update.message?.text || '(no text)',
+        raw_update: update // store the full JSON
     };
     telegramLog.push(entry);
     if (telegramLog.length > MAX_LOG) telegramLog.shift();
-    console.log(`📩 TG msg: [${entry.chat_title}] ${entry.from}: ${entry.text}`);
+
+    console.log(`\n📩 TG msg Summary: [${entry.chat_title}] ${entry.from}: ${entry.text}`);
+    console.log('📦 Raw JSON:');
+    console.log(JSON.stringify(update, null, 2));
+    console.log('---------------------------------------------------\n');
 }
 
 let bot = null;
@@ -140,6 +146,79 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
 }
 
 // ─── REST API ────────────────────────────────────────────────────
+const cron = require('node-cron');
+
+// Helper to get 6 AM boundaries for a given date
+function getReportBoundaries(dateStr) {
+    // dateStr is 'YYYY-MM-DD'
+    // The report for 'YYYY-MM-DD' covers 6 AM the day before, to 6 AM that day.
+    const until = moment.tz(`${dateStr} 06:00:00`, 'America/Caracas');
+    const since = until.clone().subtract(24, 'hours');
+
+    return {
+        since: since.format('YYYY-MM-DD HH:mm:ss'),
+        until: until.format('YYYY-MM-DD HH:mm:ss')
+    };
+}
+
+// REST endpoint to get the daily report
+app.get('/api/report/daily', (req, res) => {
+    try {
+        // Default to today if no date provided
+        const dateStr = req.query.date || moment().tz('America/Caracas').format('YYYY-MM-DD');
+        const { since, until } = getReportBoundaries(dateStr);
+
+        const report = getDailyReport(since, until);
+        res.json(report);
+    } catch (err) {
+        console.error('Error fetching daily report:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Cron job to run every day at 6:00 AM Caracas time
+cron.schedule('0 6 * * *', () => {
+    try {
+        console.log('⏰ Running daily report cron job...');
+
+        // Today is the date we run it
+        const today = moment().tz('America/Caracas').format('YYYY-MM-DD');
+        const { since, until } = getReportBoundaries(today);
+
+        const report = getDailyReport(since, until);
+
+        if (bot && ADMIN_GROUP_ID) {
+            let msg = `📊 *Reporte Diario de Vouchers*\n`;
+            msg += `Período: ${since} - ${until}\n\n`;
+            msg += `*Totales:*\n`;
+            msg += `• Solicitados: ${report.totals.requested}\n`;
+            msg += `• Usados: ${report.totals.used}\n`;
+            msg += `• Total a pagar: $${report.totals.totalPayment.toFixed(2)}\n`;
+            msg += `• Disponibles en stock: ${report.totals.availableInStock}\n\n`;
+
+            if (report.sellers.length > 0) {
+                msg += `*Por Vendedor:*\n`;
+                for (const s of report.sellers) {
+                    msg += `👤 *${s.seller}*\n`;
+                    msg += `  - Solicitados: ${s.requested}\n`;
+                    msg += `  - Usados: ${s.used}\n`;
+                    msg += `  - Pago: $${s.payment.toFixed(2)}\n`;
+                }
+            } else {
+                msg += `_No hubo actividad en este período._`;
+            }
+
+            bot.sendMessage(ADMIN_GROUP_ID, msg, { parse_mode: 'Markdown' });
+            console.log('✅ Daily report sent to Telegram Admin group');
+        } else {
+            console.log('⚠️ Cron ran, but Telegram bot / ADMIN_GROUP_ID not configured.');
+        }
+    } catch (err) {
+        console.error('❌ Error running daily report cron:', err);
+    }
+}, {
+    timezone: 'America/Caracas'
+});
 
 // View last 25 Telegram messages received by this server
 app.get('/api/telegram-log', (req, res) => {
