@@ -339,6 +339,7 @@ app.post('/api/voucher/use', (req, res) => {
                 bot.sendMessage(salespersonGroupId,
                     `🟢 *Voucher en uso*\n\n` +
                     `Código: \`${code}\`\n` +
+                    `MAC: \`${mac || 'N/A'}\`\n` +
                     `Fecha: ${now}`,
                     { parse_mode: 'Markdown' }
                 );
@@ -350,6 +351,7 @@ app.post('/api/voucher/use', (req, res) => {
             bot.sendMessage(ADMIN_GROUP_ID,
                 `🟢 *Voucher Utilizado*\n\n` +
                 `Código: \`${code}\`\n` +
+                `Vendedor: ${result.voucher.requested_by || 'N/A'}\n` +
                 `MAC: \`${mac || 'N/A'}\`\n` +
                 `Fecha: ${now}`,
                 { parse_mode: 'Markdown' }
