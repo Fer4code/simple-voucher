@@ -22,8 +22,18 @@ function seedFromList(codes) {
     let skipped = 0;
 
     for (const code of codes) {
-        const trimmed = code.trim();
+        let trimmed = code.trim();
         if (!trimmed) continue;
+        if (trimmed.startsWith('/') || trimmed.startsWith('#')) continue;
+
+        // If user accidentally imported .rsc with --file
+        const match = trimmed.match(/name="([^"]+)"/);
+        if (match) {
+            trimmed = match[1];
+        } else {
+            // Also strip headers from Mikrotik exports if they just passed everything
+            if (trimmed.includes(' ') || trimmed.length > 20 || trimmed.includes('/ip ')) continue;
+        }
 
         if (insertVoucher(trimmed)) {
             inserted++;
@@ -74,7 +84,9 @@ if (args[0] === '--file') {
     console.log(`  Parsing MikroTik .rsc export from ${filePath}...`);
 
     for (const line of lines) {
-        if (!line.trim().startsWith('add name=')) continue;
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('/') || trimmedLine.startsWith('#')) continue;
+        if (!trimmedLine.startsWith('add name=')) continue;
 
         const nameMatch = line.match(/name="([^"]+)"/);
         const profileMatch = line.match(/profile="([^"]+)"/);
@@ -84,8 +96,12 @@ if (args[0] === '--file') {
             const profile = profileMatch[1];
 
             let type = 'paid';
-            if (profile === 'Friends') type = 'friend';
-            if (profile === 'Not-Quite-Friends') type = 'nqf';
+            const pLower = profile.toLowerCase();
+            if (pLower.includes('friend') && !pLower.includes('not')) {
+                type = 'friend';
+            } else if (pLower.includes('not quite') || pLower.includes('not-quite')) {
+                type = 'nqf';
+            }
 
             if (insertVoucher(code, type)) {
                 inserted++;
