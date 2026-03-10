@@ -108,7 +108,7 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
 
         // Restrict F and C to Admin only
         if ((type === 'friend' || type === 'nqf') && chatId !== ADMIN_GROUP_ID) {
-            bot.sendMessage(chatId, '⚠️ Solo el administrador puede solicitar este tipo de voucher.');
+            // Silently ignore to avoid advertising to sales groups
             return;
         }
 

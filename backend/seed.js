@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+can #!/usr/bin / env node
 const fs = require('fs');
 const { insertVoucher } = require('./db');
 
