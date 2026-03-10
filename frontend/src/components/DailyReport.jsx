@@ -86,6 +86,18 @@ export default function DailyReport() {
                         </div>
                     </div>
 
+                    {/* Session Stats */}
+                    <div className="stats-row report-stats-row" style={{ marginTop: '1rem' }}>
+                        <div className="stat-box stat-avg-time" style={{ background: '#f8f9fa', color: '#333' }}>
+                            <div className="stat-value">{Math.round(report.totals.avgSessionMinutes)} min</div>
+                            <div className="stat-label">Tiempo Promedio</div>
+                        </div>
+                        <div className="stat-box stat-max-time" style={{ background: '#f8f9fa', color: '#333' }}>
+                            <div className="stat-value">{Math.round(report.totals.maxSessionMinutes)} min</div>
+                            <div className="stat-label">Tiempo Máximo</div>
+                        </div>
+                    </div>
+
                     {/* Report Summary Details */}
                     <div className="report-summary">
                         <small>Período: {report.period.from} al {report.period.to}</small>

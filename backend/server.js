@@ -11,7 +11,8 @@ const {
     getAllVouchers,
     getStats,
     insertVoucher,
-    getDailyReport
+    getDailyReport,
+    markLogout
 } = require('./db');
 
 const app = express();
@@ -97,18 +98,38 @@ if (BOT_TOKEN && BOT_TOKEN !== 'your_bot_token_here') {
     }
 
     // ─── Bot Commands ────────────────────────────────────────────
-    bot.onText(/^[Tt]$/i, (msg) => {
+    bot.onText(/^[tfc]$/i, (msg) => {
         const chatId = msg.chat.id.toString();
+        const cmd = msg.text.toUpperCase();
 
-        // Only respond in registered sales groups
-        const salesperson = GROUP_TO_SALESPERSON[chatId];
-        if (!salesperson) {
+        let type = 'paid';
+        if (cmd === 'F') type = 'friend';
+        if (cmd === 'C') type = 'nqf';
+
+        // Restrict F and C to Admin only
+        if ((type === 'friend' || type === 'nqf') && chatId !== ADMIN_GROUP_ID) {
+            bot.sendMessage(chatId, '⚠️ Solo el administrador puede solicitar este tipo de voucher.');
             return;
         }
 
-        const voucher = getUnusedVoucher();
+        // Only respond in registered sales groups (or Admin group)
+        let salesperson = GROUP_TO_SALESPERSON[chatId];
+        if (!salesperson) {
+            if (chatId === ADMIN_GROUP_ID) {
+                salesperson = 'Administrador';
+            } else {
+                return;
+            }
+        }
+
+        const voucher = getUnusedVoucher(type);
         if (!voucher) {
-            bot.sendMessage(chatId, '⚠️ No hay vouchers disponibles. Contacte al administrador.');
+            let label = 'vouchers de este tipo';
+            if (type === 'paid') label = 'vouchers normales';
+            if (type === 'friend') label = 'vouchers de Friends';
+            if (type === 'nqf') label = 'vouchers de Not-Quite-Friends';
+
+            bot.sendMessage(chatId, `⚠️ No hay ${label} disponibles. Contacte al administrador.`);
             return;
         }
 
@@ -195,6 +216,10 @@ cron.schedule('0 6 * * *', () => {
             msg += `• Usados: ${report.totals.used}\n`;
             msg += `• Total a pagar: $${report.totals.totalPayment.toFixed(2)}\n`;
             msg += `• Disponibles en stock: ${report.totals.availableInStock}\n\n`;
+
+            msg += `*Tiempos de Conexión:*\n`;
+            msg += `• Promedio: ${Math.round(report.totals.avgSessionMinutes)} min\n`;
+            msg += `• Máximo: ${Math.round(report.totals.maxSessionMinutes)} min\n\n`;
 
             if (report.sellers.length > 0) {
                 msg += `*Por Vendedor:*\n`;
@@ -361,6 +386,29 @@ app.post('/api/voucher/use', (req, res) => {
         res.json({ message: 'Voucher marked as used', voucher: result.voucher });
     } catch (err) {
         console.error('Error marking voucher as used:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// MikroTik callback: voucher logout
+app.post('/api/voucher/logout', (req, res) => {
+    try {
+        const { code, mac } = req.body;
+
+        if (!code) {
+            return res.status(400).json({ error: 'Missing "code" in request body' });
+        }
+
+        const now = moment().tz('America/Caracas').format('YYYY-MM-DD HH:mm:ss');
+        const result = markLogout(code, mac || 'N/A', now);
+
+        if (!result.found) {
+            return res.status(404).json({ error: 'Voucher not found' });
+        }
+
+        res.json({ message: 'Voucher marked as logged out', voucher: result.voucher });
+    } catch (err) {
+        console.error('Error marking voucher as logged out:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

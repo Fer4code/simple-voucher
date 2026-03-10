@@ -9,8 +9,10 @@ function printUsage() {
   Usage:
     node seed.js CODE1,CODE2,CODE3,...
     node seed.js --file vouchers.txt
+    node seed.js --rsc mikrotik_import.rsc
 
-  The text file should have one voucher code per line.
+  --file: One voucher code per line (defaults to 'paid' type).
+  --rsc: Parses a MikroTik .rsc export to extract codes and map profiles to types.
   Duplicate codes are silently skipped.
   `);
 }
@@ -54,6 +56,45 @@ if (args[0] === '--file') {
     const codes = content.split(/\r?\n/).filter(line => line.trim());
     console.log(`  Loading ${codes.length} voucher codes from ${filePath}...`);
     seedFromList(codes);
+} else if (args[0] === '--rsc') {
+    if (!args[1]) {
+        console.error('  Error: Please provide a file path after --rsc');
+        process.exit(1);
+    }
+    const filePath = args[1];
+    if (!fs.existsSync(filePath)) {
+        console.error(`  Error: File not found: ${filePath}`);
+        process.exit(1);
+    }
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split(/\r?\n/);
+    let inserted = 0;
+    let skipped = 0;
+
+    console.log(`  Parsing MikroTik .rsc export from ${filePath}...`);
+
+    for (const line of lines) {
+        if (!line.trim().startsWith('add name=')) continue;
+
+        const nameMatch = line.match(/name="([^"]+)"/);
+        const profileMatch = line.match(/profile="([^"]+)"/);
+
+        if (nameMatch && profileMatch) {
+            const code = nameMatch[1];
+            const profile = profileMatch[1];
+
+            let type = 'paid';
+            if (profile === 'Friends') type = 'friend';
+            if (profile === 'Not-Quite-Friends') type = 'nqf';
+
+            if (insertVoucher(code, type)) {
+                inserted++;
+            } else {
+                skipped++;
+            }
+        }
+    }
+    console.log(`\n  Done! Inserted: ${inserted}, Skipped (duplicates): ${skipped}\n`);
 } else {
     // Comma-separated codes
     const codes = args.join(',').split(',').filter(c => c.trim());

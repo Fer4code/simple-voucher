@@ -35,16 +35,30 @@ try {
   // Column already exists — ignore
 }
 
+// Add logout_at column if upgrading an existing database
+try {
+  db.exec(`ALTER TABLE vouchers ADD COLUMN logout_at TEXT DEFAULT NULL`);
+} catch (err) {
+  // Column already exists — ignore
+}
+
+// Add type column if upgrading an existing database
+try {
+  db.exec(`ALTER TABLE vouchers ADD COLUMN type TEXT DEFAULT 'paid'`);
+} catch (err) {
+  // Column already exists — ignore
+}
+
 /**
  * Get one voucher that has not been requested yet
  */
-function getUnusedVoucher() {
+function getUnusedVoucher(type = 'paid') {
   return db.prepare(`
     SELECT * FROM vouchers
-    WHERE requested_at IS NULL
+    WHERE requested_at IS NULL AND type = ?
     ORDER BY id ASC
     LIMIT 1
-  `).get();
+  `).get(type);
 }
 
 /**
@@ -77,6 +91,23 @@ function markUsed(code, mac, timestamp) {
 }
 
 /**
+ * Mark a voucher connection as logged out
+ */
+function markLogout(code, mac, timestamp) {
+  const voucher = db.prepare(`SELECT * FROM vouchers WHERE code = ?`).get(code);
+  if (!voucher) return { found: false };
+
+  db.prepare(`
+    UPDATE vouchers SET logout_at = ? WHERE code = ?
+  `).run(timestamp, code);
+
+  return {
+    found: true,
+    voucher: db.prepare(`SELECT * FROM vouchers WHERE code = ?`).get(code)
+  };
+}
+
+/**
  * Get all vouchers ordered by id
  */
 function getAllVouchers() {
@@ -98,9 +129,9 @@ function getStats() {
 /**
  * Insert a voucher code (ignores duplicates)
  */
-function insertVoucher(code) {
+function insertVoucher(code, type = 'paid') {
   try {
-    db.prepare(`INSERT INTO vouchers (code) VALUES (?)`).run(code.trim());
+    db.prepare(`INSERT INTO vouchers (code, type) VALUES (?, ?)`).run(code.trim(), type);
     return true;
   } catch (err) {
     if (err.message.includes('UNIQUE constraint')) return false;
@@ -174,6 +205,16 @@ function getDailyReport(since, until) {
     SELECT COUNT(*) AS count FROM vouchers
   `).get().count;
 
+  // Calculate average and max connection time in minutes
+  const sessionStats = db.prepare(`
+    SELECT 
+      MAX((julianday(logout_at) - julianday(used_at)) * 24 * 60) as max_minutes,
+      AVG((julianday(logout_at) - julianday(used_at)) * 24 * 60) as avg_minutes
+    FROM vouchers
+    WHERE used_at IS NOT NULL AND logout_at IS NOT NULL
+      AND used_at >= ? AND used_at < ?
+  `).get(since, until);
+
   const totalPaymentFromSellers = sellers.reduce((sum, s) => sum + s.payment, 0);
 
   return {
@@ -184,7 +225,9 @@ function getDailyReport(since, until) {
       totalPayment: totalPaymentFromSellers,
       availableInStock: totalAvailable,
       totalInInventory: totalInInventory,
-      voucherPrice
+      voucherPrice,
+      maxSessionMinutes: sessionStats.max_minutes || 0,
+      avgSessionMinutes: sessionStats.avg_minutes || 0
     },
     period: { from: since, to: until }
   };
@@ -195,6 +238,7 @@ module.exports = {
   getUnusedVoucher,
   markRequested,
   markUsed,
+  markLogout,
   getAllVouchers,
   getStats,
   insertVoucher,
