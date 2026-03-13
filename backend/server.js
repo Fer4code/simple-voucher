@@ -214,7 +214,7 @@ cron.schedule('0 6 * * *', () => {
             msg += `*Totales:*\n`;
             msg += `• Solicitados: ${report.totals.requested}\n`;
             msg += `• Usados: ${report.totals.used}\n`;
-            msg += `• Total a pagar: $${report.totals.totalPayment.toFixed(2)}\n`;
+            msg += `• Total a recolectado: $${report.totals.totalPayment.toFixed(2)}\n`;
             msg += `• Disponibles en stock: ${report.totals.availableInStock}\n\n`;
 
             msg += `*Tiempos de Conexión:*\n`;
@@ -227,7 +227,6 @@ cron.schedule('0 6 * * *', () => {
                     msg += `👤 *${s.seller}*\n`;
                     msg += `  - Solicitados: ${s.requested}\n`;
                     msg += `  - Usados: ${s.used}\n`;
-                    msg += `  - Pago: $${s.payment.toFixed(2)}\n`;
                 }
             } else {
                 msg += `_No hubo actividad en este período._`;
